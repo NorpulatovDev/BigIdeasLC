@@ -24,23 +24,21 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             "ORDER BY p.createdAt DESC")
     List<Payment> findByBranchIdWithAllRelations(@Param("branchId") Long branchId);
 
-    // NEW: Find payments by category
     @Query("SELECT p FROM Payment p " +
             "LEFT JOIN FETCH p.student " +
             "LEFT JOIN FETCH p.group " +
             "LEFT JOIN FETCH p.branch " +
             "WHERE p.branch.id = :branchId AND p.category = :category " +
             "ORDER BY p.createdAt DESC")
-    List<Payment> findByBranchIdAndCategoryWithAllRelations(@Param("branchId") Long branchId, 
+    List<Payment> findByBranchIdAndCategoryWithAllRelations(@Param("branchId") Long branchId,
                                                             @Param("category") PaymentCategory category);
 
-    // NEW: Find payments by category and month
     @Query("SELECT p FROM Payment p " +
             "LEFT JOIN FETCH p.student " +
             "LEFT JOIN FETCH p.group " +
             "LEFT JOIN FETCH p.branch " +
             "WHERE p.branch.id = :branchId AND p.category = :category " +
-            "AND p.paymentYear = :year AND p.paymentMonth = :month " +
+            "AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month " +
             "ORDER BY p.createdAt DESC")
     List<Payment> findByBranchIdAndCategoryAndMonthWithAllRelations(@Param("branchId") Long branchId,
                                                                     @Param("category") PaymentCategory category,
@@ -76,7 +74,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             "LEFT JOIN FETCH p.student " +
             "LEFT JOIN FETCH p.group " +
             "LEFT JOIN FETCH p.branch " +
-            "WHERE p.branch.id = :branchId AND p.paymentYear = :year AND p.paymentMonth = :month " +
+            "WHERE p.branch.id = :branchId AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month " +
             "ORDER BY p.createdAt DESC")
     List<Payment> findByBranchIdAndPaymentYearAndPaymentMonthWithRelations(@Param("branchId") Long branchId,
                                                                            @Param("year") int year,
@@ -91,21 +89,21 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             "DATE(p.createdAt) = DATE(:date)")
     BigDecimal sumDailyPayments(@Param("branchId") Long branchId, @Param("date") LocalDateTime date);
 
-    // NEW: Daily payments sum by category
+    // Daily payments sum by category
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.branch.id = :branchId AND " +
             "p.category = :category AND DATE(p.createdAt) = DATE(:date)")
-    BigDecimal sumDailyPaymentsByCategory(@Param("branchId") Long branchId, 
+    BigDecimal sumDailyPaymentsByCategory(@Param("branchId") Long branchId,
                                          @Param("category") PaymentCategory category,
                                          @Param("date") LocalDateTime date);
 
     // Monthly payments sum
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.branch.id = :branchId AND " +
-            "p.paymentYear = :year AND p.paymentMonth = :month")
+            "YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     BigDecimal sumMonthlyPayments(@Param("branchId") Long branchId, @Param("year") int year, @Param("month") int month);
 
-    // NEW: Monthly payments sum by category
+    // Monthly payments sum by category
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.branch.id = :branchId AND " +
-            "p.category = :category AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "p.category = :category AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     BigDecimal sumMonthlyPaymentsByCategory(@Param("branchId") Long branchId,
                                            @Param("category") PaymentCategory category,
                                            @Param("year") int year,
@@ -118,7 +116,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                                       @Param("startDate") LocalDateTime startDate,
                                       @Param("endDate") LocalDateTime endDate);
 
-    // NEW: Range payments sum by category
+    // Range payments sum by category
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.branch.id = :branchId AND " +
             "p.category = :category AND p.createdAt BETWEEN :startDate AND :endDate")
     BigDecimal sumPaymentsByDateRangeAndCategory(@Param("branchId") Long branchId,
@@ -128,19 +126,19 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     // Teacher's student payments for salary calculation
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p " +
-            "WHERE p.group.teacher.id = :teacherId AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "WHERE p.group.teacher.id = :teacherId AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     BigDecimal sumTeacherStudentPayments(@Param("teacherId") Long teacherId,
                                          @Param("year") int year, @Param("month") int month);
 
     // Count teacher's students who paid
     @Query("SELECT COUNT(DISTINCT p.student.id) FROM Payment p " +
-            "WHERE p.group.teacher.id = :teacherId AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "WHERE p.group.teacher.id = :teacherId AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     int countTeacherPaidStudents(@Param("teacherId") Long teacherId,
                                  @Param("year") int year, @Param("month") int month);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p " +
             "WHERE p.student.id = :studentId AND p.group.id = :groupId " +
-            "AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     BigDecimal getTotalPaidByStudentInGroupForMonth(@Param("studentId") Long studentId,
                                                     @Param("groupId") Long groupId,
                                                     @Param("year") int year,

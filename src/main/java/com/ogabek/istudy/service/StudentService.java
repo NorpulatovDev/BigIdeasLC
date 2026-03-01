@@ -6,14 +6,8 @@ import com.ogabek.istudy.dto.response.GroupDto;
 import com.ogabek.istudy.dto.response.PaymentDto;
 import com.ogabek.istudy.dto.response.StudentDto;
 import com.ogabek.istudy.dto.response.UnpaidStudentDto;
-import com.ogabek.istudy.entity.Branch;
-import com.ogabek.istudy.entity.Group;
-import com.ogabek.istudy.entity.Payment;
-import com.ogabek.istudy.entity.Student;
-import com.ogabek.istudy.repository.BranchRepository;
-import com.ogabek.istudy.repository.GroupRepository;
-import com.ogabek.istudy.repository.PaymentRepository;
-import com.ogabek.istudy.repository.StudentRepository;
+import com.ogabek.istudy.entity.*;
+import com.ogabek.istudy.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +26,7 @@ public class StudentService {
     private final BranchRepository branchRepository;
     private final PaymentRepository paymentRepository;
     private final GroupRepository groupRepository;
+    private final EnrollmentRepository enrollmentRepository;
 
     @Transactional(readOnly = true)
     public List<StudentDto> getStudentsByBranch(Long branchId) {
@@ -54,19 +49,15 @@ public class StudentService {
 
     @Transactional(readOnly = true)
     public List<StudentDto> getStudentsByGroup(Long groupId, Integer year, Integer month) {
-        Group group = groupRepository.findByIdWithAllRelations(groupId)
+        groupRepository.findById(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found with id: " + groupId));
 
         LocalDate paymentPeriod = getCurrentPaymentPeriod();
         int targetYear = year != null ? year : paymentPeriod.getYear();
         int targetMonth = month != null ? month : paymentPeriod.getMonthValue();
 
-        if (group.getStudents() == null || group.getStudents().isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        return group.getStudents().stream()
-                .map(student -> convertToDto(student, targetYear, targetMonth))
+        return enrollmentRepository.findByGroupId(groupId).stream()
+                .map(e -> convertToDto(e.getStudent(), targetYear, targetMonth))
                 .collect(Collectors.toList());
     }
 
@@ -80,38 +71,37 @@ public class StudentService {
         int targetMonth = month != null ? month : paymentPeriod.getMonthValue();
 
         for (Group group : branchGroups) {
-            if (group.getStudents() != null) {
-                for (Student student : group.getStudents()) {
-                    BigDecimal totalPaid;
+            List<Enrollment> enrollments = enrollmentRepository.findByGroupId(group.getId());
+            for (Enrollment enrollment : enrollments) {
+                Student student = enrollment.getStudent();
+                BigDecimal tuitionFee = enrollment.getTuitionFee() != null ? enrollment.getTuitionFee() : BigDecimal.ZERO;
 
-                    if (year == null || month == null) {
-                        totalPaid = paymentRepository.findByStudentIdWithRelations(student.getId())
-                                .stream()
-                                .filter(payment -> payment.getGroup().getId().equals(group.getId()))
-                                .map(Payment::getAmount)
-                                .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    } else {
-                        totalPaid = paymentRepository.getTotalPaidByStudentInGroupForMonth(
-                                student.getId(), group.getId(), targetYear, targetMonth);
-                        totalPaid = totalPaid != null ? totalPaid : BigDecimal.ZERO;
-                    }
+                BigDecimal totalPaid;
+                if (year == null || month == null) {
+                    totalPaid = paymentRepository.findByStudentIdWithRelations(student.getId())
+                            .stream()
+                            .filter(payment -> payment.getGroup().getId().equals(group.getId()))
+                            .map(Payment::getAmount)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                } else {
+                    totalPaid = paymentRepository.getTotalPaidByStudentInGroupForMonth(
+                            student.getId(), group.getId(), targetYear, targetMonth);
+                    totalPaid = totalPaid != null ? totalPaid : BigDecimal.ZERO;
+                }
 
-                    BigDecimal remainingAmount = group.getPrice().subtract(totalPaid);
+                BigDecimal remainingAmount = tuitionFee.subtract(totalPaid);
+                boolean isOverdue = isPaymentOverdue(student, targetYear, targetMonth);
 
-                    // NEW: Check if payment is actually overdue based on payment day
-                    boolean isOverdue = isPaymentOverdue(student, targetYear, targetMonth);
-
-                    if (remainingAmount.compareTo(BigDecimal.ZERO) > 0 && isOverdue) {
-                        result.add(new UnpaidStudentDto(
-                                student.getId(),
-                                student.getFirstName(),
-                                student.getLastName(),
-                                student.getPhoneNumber(),
-                                student.getParentPhoneNumber(),
-                                remainingAmount,
-                                group.getId(),
-                                group.getName()));
-                    }
+                if (remainingAmount.compareTo(BigDecimal.ZERO) > 0 && isOverdue) {
+                    result.add(new UnpaidStudentDto(
+                            student.getId(),
+                            student.getFirstName(),
+                            student.getLastName(),
+                            student.getPhoneNumber(),
+                            student.getParentPhoneNumber(),
+                            remainingAmount,
+                            group.getId(),
+                            group.getName()));
                 }
             }
         }
@@ -136,12 +126,8 @@ public class StudentService {
 
     @Transactional(readOnly = true)
     public List<GroupDto> getStudentGroups(Long studentId) {
-        Student student = studentRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found with id: " + studentId));
-
-        return groupRepository.findByBranchIdWithAllRelations(student.getBranch().getId()).stream()
-                .filter(group -> group.getStudents() != null && group.getStudents().contains(student))
-                .map(this::convertGroupToDto)
+        return enrollmentRepository.findByStudentId(studentId).stream()
+                .map(e -> convertGroupToDto(e.getGroup()))
                 .collect(Collectors.toList());
     }
 
@@ -150,7 +136,6 @@ public class StudentService {
         List<Student> allStudents = studentRepository.findByBranchId(branchId);
         LocalDate paymentPeriod = getCurrentPaymentPeriod();
 
-        // Count students by payment status
         long paidCount = 0;
         long unpaidCount = 0;
         long upcomingCount = 0;
@@ -229,27 +214,9 @@ public class StudentService {
         student.setPhoneNumber(request.getPhoneNumber());
         student.setParentPhoneNumber(request.getParentPhoneNumber());
         student.setBranch(branch);
-        student.setPaymentDayOfMonth(request.getPaymentDayOfMonth()); // NEW
+        student.setPaymentDayOfMonth(request.getPaymentDayOfMonth());
 
         Student savedStudent = studentRepository.save(student);
-
-        if (request.getGroupIds() != null && !request.getGroupIds().isEmpty()) {
-            for (Long groupId : request.getGroupIds()) {
-                Group group = groupRepository.findByIdWithAllRelations(groupId)
-                        .orElseThrow(() -> new RuntimeException("Group not found with id: " + groupId));
-
-                if (!group.getBranch().getId().equals(request.getBranchId())) {
-                    throw new RuntimeException(
-                            "Group " + groupId + " does not belong to branch " + request.getBranchId());
-                }
-
-                if (group.getStudents() == null) {
-                    group.setStudents(new HashSet<>());
-                }
-                group.getStudents().add(savedStudent);
-                groupRepository.save(group);
-            }
-        }
 
         LocalDate paymentPeriod = getCurrentPaymentPeriod();
         return convertToDto(savedStudent, paymentPeriod.getYear(), paymentPeriod.getMonthValue());
@@ -268,36 +235,9 @@ public class StudentService {
         student.setPhoneNumber(request.getPhoneNumber());
         student.setParentPhoneNumber(request.getParentPhoneNumber());
         student.setBranch(branch);
-        student.setPaymentDayOfMonth(request.getPaymentDayOfMonth()); // NEW
+        student.setPaymentDayOfMonth(request.getPaymentDayOfMonth());
 
         Student savedStudent = studentRepository.save(student);
-
-        List<Group> currentGroups = groupRepository.findByBranchIdWithAllRelations(branch.getId()).stream()
-                .filter(group -> group.getStudents() != null && group.getStudents().contains(student))
-                .collect(Collectors.toList());
-
-        for (Group group : currentGroups) {
-            group.getStudents().remove(student);
-            groupRepository.save(group);
-        }
-
-        if (request.getGroupIds() != null && !request.getGroupIds().isEmpty()) {
-            for (Long groupId : request.getGroupIds()) {
-                Group group = groupRepository.findByIdWithAllRelations(groupId)
-                        .orElseThrow(() -> new RuntimeException("Group not found with id: " + groupId));
-
-                if (!group.getBranch().getId().equals(request.getBranchId())) {
-                    throw new RuntimeException(
-                            "Group " + groupId + " does not belong to branch " + request.getBranchId());
-                }
-
-                if (group.getStudents() == null) {
-                    group.setStudents(new HashSet<>());
-                }
-                group.getStudents().add(savedStudent);
-                groupRepository.save(group);
-            }
-        }
 
         LocalDate now = LocalDate.now();
         return convertToDto(savedStudent, now.getYear(), now.getMonthValue());
@@ -308,17 +248,6 @@ public class StudentService {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("O'quvchi topilmadi: " + id));
 
-        // Remove from all groups first
-        List<Group> studentGroups = groupRepository.findByBranchIdWithAllRelations(student.getBranch().getId()).stream()
-                .filter(group -> group.getStudents() != null && group.getStudents().contains(student))
-                .collect(Collectors.toList());
-
-        for (Group group : studentGroups) {
-            group.getStudents().remove(student);
-            groupRepository.save(group);
-        }
-
-        // Soft delete by setting deleted flag
         student.setDeleted(true);
         studentRepository.save(student);
     }
@@ -333,12 +262,9 @@ public class StudentService {
         return now;
     }
 
-    /**
-     * NEW: Calculate the next payment due date for a student
-     */
     private LocalDate calculateNextDueDate(Student student, int year, int month) {
         if (student.getPaymentDayOfMonth() == null) {
-            return null; // No payment day set
+            return null;
         }
 
         LocalDate today = LocalDate.now();
@@ -346,32 +272,24 @@ public class StudentService {
 
         try {
             LocalDate dueDate = LocalDate.of(year, month, dayOfMonth);
-
-            // If the calculated due date has already passed, calculate for next month
             if (dueDate.isBefore(today)) {
                 LocalDate nextMonth = dueDate.plusMonths(1);
                 try {
                     return LocalDate.of(nextMonth.getYear(), nextMonth.getMonthValue(), dayOfMonth);
                 } catch (Exception e) {
-                    // If day doesn't exist in next month, use last day
                     return nextMonth.withDayOfMonth(nextMonth.lengthOfMonth());
                 }
             }
-
             return dueDate;
         } catch (Exception e) {
-            // Handle invalid dates (e.g., Feb 30)
             LocalDate firstOfMonth = LocalDate.of(year, month, 1);
             return firstOfMonth.withDayOfMonth(firstOfMonth.lengthOfMonth());
         }
     }
 
-    /**
-     * NEW: Check if a payment is overdue for a student in a specific month
-     */
     private boolean isPaymentOverdue(Student student, int year, int month) {
         if (student.getPaymentDayOfMonth() == null) {
-            return false; // Can't be overdue if no payment day is set
+            return false;
         }
 
         LocalDate today = LocalDate.now();
@@ -380,7 +298,6 @@ public class StudentService {
         try {
             dueDate = LocalDate.of(year, month, student.getPaymentDayOfMonth());
         } catch (Exception e) {
-            // If day doesn't exist in month, use last day of month
             dueDate = LocalDate.of(year, month, 1).plusMonths(1).minusDays(1);
         }
 
@@ -394,7 +311,7 @@ public class StudentService {
         dto.setLastName(student.getLastName());
         dto.setPhoneNumber(student.getPhoneNumber());
         dto.setParentPhoneNumber(student.getParentPhoneNumber());
-        dto.setPaymentDayOfMonth(student.getPaymentDayOfMonth()); // NEW
+        dto.setPaymentDayOfMonth(student.getPaymentDayOfMonth());
 
         if (student.getBranch() != null) {
             dto.setBranchId(student.getBranch().getId());
@@ -403,40 +320,32 @@ public class StudentService {
 
         dto.setCreatedAt(student.getCreatedAt());
 
-        // NEW: Calculate next due date
         LocalDate nextDueDate = calculateNextDueDate(student, year, month);
         dto.setNextDueDate(nextDueDate);
 
-        if (student.getBranch() != null) {
-            List<Group> studentGroups = groupRepository.findByBranchIdWithAllRelations(student.getBranch().getId())
-                    .stream()
-                    .filter(group -> group.getStudents() != null && group.getStudents().contains(student))
-                    .collect(Collectors.toList());
+        List<Enrollment> studentEnrollments = enrollmentRepository.findByStudentId(student.getId());
+        List<StudentDto.GroupInfo> groupInfos = studentEnrollments.stream()
+                .map(enrollment -> {
+                    Group group = enrollment.getGroup();
+                    String teacherName = group.getTeacher() != null
+                            ? group.getTeacher().getFirstName() + " " + group.getTeacher().getLastName()
+                            : null;
+                    return new StudentDto.GroupInfo(
+                            group.getId(),
+                            group.getName(),
+                            enrollment.getTuitionFee(),
+                            teacherName,
+                            enrollment.getId());
+                })
+                .collect(Collectors.toList());
 
-            List<StudentDto.GroupInfo> groupInfos = studentGroups.stream()
-                    .map(group -> {
-                        String teacherName = group.getTeacher() != null
-                                ? group.getTeacher().getFirstName() + " " + group.getTeacher().getLastName()
-                                : null;
-                        return new StudentDto.GroupInfo(
-                                group.getId(),
-                                group.getName(),
-                                group.getPrice(),
-                                teacherName);
-                    })
-                    .collect(Collectors.toList());
-
-            dto.setGroups(groupInfos);
-        }
+        dto.setGroups(groupInfos);
 
         calculatePaymentStatus(dto, student.getId(), year, month);
 
         return dto;
     }
 
-    /**
-     * UPDATED: Calculate payment status with due date awareness
-     */
     private void calculatePaymentStatus(StudentDto dto, Long studentId, int year, int month) {
         Boolean hasPaid = studentRepository.hasStudentPaidInMonth(studentId, year, month);
         dto.setHasPaidInMonth(hasPaid != null ? hasPaid : false);
@@ -450,36 +359,27 @@ public class StudentService {
         BigDecimal remaining = expectedPayment.subtract(dto.getTotalPaidInMonth());
         dto.setRemainingAmount(remaining.compareTo(BigDecimal.ZERO) > 0 ? remaining : BigDecimal.ZERO);
 
-        // NEW: Enhanced status calculation with due date awareness
         LocalDate nextDueDate = dto.getNextDueDate();
         LocalDate today = LocalDate.now();
 
         if (dto.getTotalPaidInMonth().compareTo(expectedPayment) >= 0) {
-            // Fully paid
             dto.setPaymentStatus("PAID");
         } else if (nextDueDate == null) {
-            // No due date set - use old logic
             if (dto.getTotalPaidInMonth().compareTo(BigDecimal.ZERO) == 0) {
                 dto.setPaymentStatus("UNPAID");
             } else {
                 dto.setPaymentStatus("PARTIAL");
             }
         } else {
-            // Has due date - check if overdue
             boolean hasPartialPayment = dto.getTotalPaidInMonth().compareTo(BigDecimal.ZERO) > 0;
 
             if (today.isBefore(nextDueDate)) {
-                // Payment not yet due
                 dto.setPaymentStatus(hasPartialPayment ? "PARTIAL" : "UPCOMING");
             } else {
-                // Payment is past due date
                 long daysOverdue = ChronoUnit.DAYS.between(nextDueDate, today);
-
                 if (daysOverdue >= 7) {
-                    // More than a week overdue
                     dto.setPaymentStatus("OVERDUE");
                 } else {
-                    // Less than a week overdue
                     dto.setPaymentStatus(hasPartialPayment ? "PARTIAL" : "UNPAID");
                 }
             }
@@ -507,9 +407,8 @@ public class StudentService {
             dto.setBranchId(payment.getBranch().getId());
             dto.setBranchName(payment.getBranch().getName());
         }
-        dto.setPaymentYear(payment.getPaymentYear());
-        dto.setPaymentMonth(payment.getPaymentMonth());
-        dto.setDueDate(payment.getDueDate()); // NEW
+        dto.setPaymentDate(payment.getPaymentDate());
+        dto.setPaymentDueDate(payment.getPaymentDueDate());
         dto.setCreatedAt(payment.getCreatedAt());
         return dto;
     }
@@ -519,7 +418,6 @@ public class StudentService {
         dto.setId(group.getId());
         dto.setName(group.getName());
         dto.setDescription(group.getDescription());
-        dto.setPrice(group.getPrice());
 
         if (group.getTeacher() != null) {
             dto.setTeacherId(group.getTeacher().getId());
@@ -540,7 +438,7 @@ public class StudentService {
             dto.setDaysOfWeek(new ArrayList<>());
         }
 
-        dto.setStudentCount(group.getStudents() != null ? group.getStudents().size() : 0);
+        dto.setStudentCount((int) enrollmentRepository.countByGroupId(group.getId()));
         dto.setCreatedAt(group.getCreatedAt());
         return dto;
     }

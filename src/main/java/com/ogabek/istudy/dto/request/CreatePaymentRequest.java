@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -29,12 +30,6 @@ public class CreatePaymentRequest {
     @NotNull(message = "Filial majburiy")
     private Long branchId;
 
-    @NotNull(message = "To'lov yili majburiy")
-    @Min(value = 2020, message = "Yil 2020 dan kichik bo'lmasligi kerak")
-    private Integer paymentYear;
-
-    @NotNull(message = "To'lov oyi majburiy")
-    @Min(value = 1, message = "Oy 1-12 oralig'ida bo'lishi kerak")
-    @Max(value = 12, message = "Oy 1-12 oralig'ida bo'lishi kerak")
-    private Integer paymentMonth;
+    @NotNull(message = "To'lov sanasi majburiy")
+    private LocalDate paymentDate;
 }

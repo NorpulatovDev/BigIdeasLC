@@ -21,12 +21,12 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     List<Student> findByBranchIdAndFullName(@Param("branchId") Long branchId, @Param("name") String name);
 
     @Query("SELECT s FROM Student s WHERE s.branch.id = :branchId AND s.deleted = false AND s.id NOT IN " +
-            "(SELECT DISTINCT p.student.id FROM Payment p WHERE p.paymentYear = :year AND p.paymentMonth = :month)")
+            "(SELECT DISTINCT p.student.id FROM Payment p WHERE YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month)")
     List<Student> findUnpaidStudentsByBranchAndMonth(@Param("branchId") Long branchId,
                                                      @Param("year") int year, @Param("month") int month);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.student.id = :studentId " +
-            "AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     BigDecimal getTotalPaidByStudentInMonth(@Param("studentId") Long studentId,
                                             @Param("year") int year, @Param("month") int month);
 
@@ -34,12 +34,12 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     LocalDateTime getLastPaymentDate(@Param("studentId") Long studentId);
 
     @Query("SELECT COUNT(p) > 0 FROM Payment p WHERE p.student.id = :studentId " +
-            "AND p.paymentYear = :year AND p.paymentMonth = :month")
+            "AND YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month")
     Boolean hasStudentPaidInMonth(@Param("studentId") Long studentId,
                                   @Param("year") int year, @Param("month") int month);
 
-    @Query("SELECT COALESCE(SUM(g.price), 0) FROM Group g " +
-            "JOIN g.students s WHERE s.id = :studentId AND g.deleted = false")
+    @Query("SELECT COALESCE(SUM(e.tuitionFee), 0) FROM Enrollment e " +
+            "WHERE e.student.id = :studentId AND e.group.deleted = false")
     BigDecimal getExpectedMonthlyPaymentForStudent(@Param("studentId") Long studentId);
 
     @Query("SELECT s FROM Student s LEFT JOIN FETCH s.branch WHERE s.branch.id = :branchId AND s.deleted = false ORDER BY s.lastName ASC, s.firstName ASC")

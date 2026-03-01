@@ -109,22 +109,6 @@ public class GroupController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/{groupId}/students/{studentId}")
-    public ResponseEntity<GroupDto> addStudentToGroup(
-            @PathVariable Long groupId,
-            @PathVariable Long studentId) {
-        GroupDto updatedGroup = groupService.addStudentToGroup(groupId, studentId);
-        return ResponseEntity.ok(updatedGroup);
-    }
-
-    @DeleteMapping("/{groupId}/students/{studentId}")
-    public ResponseEntity<GroupDto> removeStudentFromGroup(
-            @PathVariable Long groupId,
-            @PathVariable Long studentId) {
-        GroupDto updatedGroup = groupService.removeStudentFromGroup(groupId, studentId);
-        return ResponseEntity.ok(updatedGroup);
-    }
-
     @GetMapping("/search")
     public ResponseEntity<List<GroupDto>> searchGroups(@RequestParam Long branchId,
                                                        @RequestParam(required = false) String name) {

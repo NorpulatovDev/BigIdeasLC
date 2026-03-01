@@ -21,12 +21,12 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     @Query("SELECT g FROM Group g " +
             "LEFT JOIN FETCH g.teacher " +
             "LEFT JOIN FETCH g.branch " +
-            "LEFT JOIN FETCH g.students " +
             "WHERE g.id = :groupId AND g.deleted = false")
     Optional<Group> findByIdWithAllRelations(@Param("groupId") Long groupId);
 
     @Query("SELECT g FROM Group g " +
-            "LEFT JOIN FETCH g.students " +
+            "LEFT JOIN FETCH g.enrollments e " +
+            "LEFT JOIN FETCH e.student " +
             "LEFT JOIN FETCH g.teacher " +
             "LEFT JOIN FETCH g.branch " +
             "WHERE g.id = :groupId AND g.deleted = false")
@@ -47,9 +47,9 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     @Query("SELECT DISTINCT g FROM Group g " +
             "LEFT JOIN FETCH g.teacher " +
             "LEFT JOIN FETCH g.branch " +
-            "JOIN g.students s " +
+            "JOIN g.enrollments e " +
             "WHERE g.branch.id = :branchId AND g.deleted = false AND " +
-            "s.id NOT IN (SELECT DISTINCT p.student.id FROM Payment p WHERE p.paymentYear = :year AND p.paymentMonth = :month)")
+            "e.student.id NOT IN (SELECT DISTINCT p.student.id FROM Payment p WHERE YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month)")
     List<Group> findGroupsWithUnpaidStudentsWithRelations(@Param("branchId") Long branchId,
                                                           @Param("year") int year, @Param("month") int month);
 
@@ -59,8 +59,8 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     @Query("SELECT g FROM Group g WHERE g.teacher.id = :teacherId AND g.deleted = false")
     List<Group> findByTeacherId(@Param("teacherId") Long teacherId);
 
-    @Query("SELECT DISTINCT g FROM Group g JOIN g.students s WHERE g.branch.id = :branchId AND g.deleted = false AND " +
-            "s.id NOT IN (SELECT DISTINCT p.student.id FROM Payment p WHERE p.paymentYear = :year AND p.paymentMonth = :month)")
+    @Query("SELECT DISTINCT g FROM Group g JOIN g.enrollments e WHERE g.branch.id = :branchId AND g.deleted = false AND " +
+            "e.student.id NOT IN (SELECT DISTINCT p.student.id FROM Payment p WHERE YEAR(p.paymentDate) = :year AND MONTH(p.paymentDate) = :month)")
     List<Group> findGroupsWithUnpaidStudents(@Param("branchId") Long branchId,
                                              @Param("year") int year, @Param("month") int month);
 

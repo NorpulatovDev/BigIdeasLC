@@ -44,11 +44,11 @@ public class Payment {
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
 
-    private int paymentYear;
-    private int paymentMonth;
+    @Column(name = "payment_date")
+    private LocalDate paymentDate;
 
-    @Column(name = "due_date")
-    private LocalDate dueDate;
+    @Column(name = "payment_due_date")
+    private LocalDate paymentDueDate;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

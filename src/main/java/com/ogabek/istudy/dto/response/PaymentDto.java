@@ -22,8 +22,7 @@ public class PaymentDto {
     private String status;
     private Long branchId;
     private String branchName;
-    private Integer paymentYear;
-    private Integer paymentMonth;
-    private LocalDate dueDate;  // NEW FIELD
+    private LocalDate paymentDate;
+    private LocalDate paymentDueDate;
     private LocalDateTime createdAt;
 }

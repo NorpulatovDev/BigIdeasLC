@@ -20,6 +20,7 @@ public class PaymentService {
     private final StudentRepository studentRepository;
     private final BranchRepository branchRepository;
     private final GroupRepository groupRepository;
+    private final EnrollmentRepository enrollmentRepository;
 
     @Transactional(readOnly = true)
     public List<PaymentDto> getPaymentsByBranch(Long branchId) {
@@ -28,7 +29,6 @@ public class PaymentService {
                 .collect(Collectors.toList());
     }
 
-    // NEW: Get payments by category
     @Transactional(readOnly = true)
     public List<PaymentDto> getPaymentsByBranchAndCategory(Long branchId, String category) {
         PaymentCategory paymentCategory = PaymentCategory.valueOf(category.toUpperCase());
@@ -37,7 +37,6 @@ public class PaymentService {
                 .collect(Collectors.toList());
     }
 
-    // NEW: Get payments by category and month
     @Transactional(readOnly = true)
     public List<PaymentDto> getPaymentsByBranchAndCategoryAndMonth(Long branchId, String category, int year, int month) {
         PaymentCategory paymentCategory = PaymentCategory.valueOf(category.toUpperCase());
@@ -68,7 +67,7 @@ public class PaymentService {
         Group group = groupRepository.findByIdWithAllRelations(request.getGroupId())
                 .orElseThrow(() -> new RuntimeException("Group not found with id: " + request.getGroupId()));
 
-        if (group.getStudents() == null || !group.getStudents().contains(student)) {
+        if (enrollmentRepository.findByStudentIdAndGroupId(student.getId(), group.getId()).isEmpty()) {
             throw new RuntimeException("O'quvchi bu guruhda yo'q!");
         }
 
@@ -86,12 +85,10 @@ public class PaymentService {
         payment.setDescription(request.getDescription());
         payment.setCategory(PaymentCategory.valueOf(request.getCategory().toUpperCase()));
         payment.setBranch(branch);
-        payment.setPaymentYear(request.getPaymentYear());
-        payment.setPaymentMonth(request.getPaymentMonth());
+        payment.setPaymentDate(request.getPaymentDate());
 
-        // SIMPLE: Calculate due date
-        LocalDate dueDate = calculateDueDate(student, request.getPaymentYear(), request.getPaymentMonth());
-        payment.setDueDate(dueDate);
+        LocalDate paymentDueDate = calculatePaymentDueDate(student, request.getPaymentDate());
+        payment.setPaymentDueDate(paymentDueDate);
 
         Payment savedPayment = paymentRepository.save(payment);
 
@@ -101,21 +98,19 @@ public class PaymentService {
         return convertToDto(paymentWithRelations);
     }
 
-    // SIMPLE: Calculate when payment is due
-    private LocalDate calculateDueDate(Student student, int year, int month) {
-        // Use student's payment day if available
+    private LocalDate calculatePaymentDueDate(Student student, LocalDate paymentDate) {
+        int year = paymentDate.getYear();
+        int month = paymentDate.getMonthValue();
         int dayOfMonth = student.getPaymentDayOfMonth() != null
                 ? student.getPaymentDayOfMonth()
-                : 1; // Default to 1st if not set
+                : 1;
 
         try {
             return LocalDate.of(year, month, dayOfMonth);
         } catch (Exception e) {
-            // Handle invalid dates (e.g., Feb 30)
             return LocalDate.of(year, month, 1).plusMonths(1).minusDays(1);
         }
     }
-
 
     @Transactional
     public PaymentDto updatePaymentAmount(Long id, BigDecimal newAmount) {
@@ -208,9 +203,8 @@ public class PaymentService {
             dto.setBranchName(payment.getBranch().getName());
         }
 
-        dto.setPaymentYear(payment.getPaymentYear());
-        dto.setPaymentMonth(payment.getPaymentMonth());
-        dto.setDueDate(payment.getDueDate());
+        dto.setPaymentDate(payment.getPaymentDate());
+        dto.setPaymentDueDate(payment.getPaymentDueDate());
         dto.setCreatedAt(payment.getCreatedAt());
         return dto;
     }

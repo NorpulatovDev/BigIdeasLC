@@ -55,16 +55,18 @@ public class StudentDto {
     public static class GroupInfo {
         private Long id;
         private String name;
-        private BigDecimal price;
+        private BigDecimal tuitionFee;
         private String teacherName;
+        private Long enrollmentId;
 
         public GroupInfo() {}
 
-        public GroupInfo(Long id, String name, BigDecimal price, String teacherName) {
+        public GroupInfo(Long id, String name, BigDecimal tuitionFee, String teacherName, Long enrollmentId) {
             this.id = id;
             this.name = name;
-            this.price = price;
+            this.tuitionFee = tuitionFee;
             this.teacherName = teacherName;
+            this.enrollmentId = enrollmentId;
         }
     }
 }

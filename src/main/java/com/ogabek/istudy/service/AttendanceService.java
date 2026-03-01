@@ -24,6 +24,7 @@ public class AttendanceService {
     private final StudentRepository studentRepository;
     private final GroupRepository groupRepository;
     private final BranchRepository branchRepository;
+    private final EnrollmentRepository enrollmentRepository;
 
     // NEW: Bulk attendance marking
     @Transactional
@@ -139,34 +140,35 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public List<StudentAttendanceSummaryDto> getGroupAttendanceSummary(Long groupId, int year, int month) {
-        Group group = groupRepository.findByIdWithAllRelations(groupId)
+        groupRepository.findById(groupId)
                 .orElseThrow(() -> new RuntimeException("Guruh topilmadi: " + groupId));
 
         List<StudentAttendanceSummaryDto> summaries = new ArrayList<>();
 
-        if (group.getStudents() != null) {
-            for (Student student : group.getStudents()) {
-                int presentDays = attendanceRepository.countByStudentAndGroupAndMonthAndStatus(
-                        student.getId(), groupId, year, month, AttendanceStatus.PRESENT);
-                
-                int absentDays = attendanceRepository.countByStudentAndGroupAndMonthAndStatus(
-                        student.getId(), groupId, year, month, AttendanceStatus.ABSENT);
+        List<Enrollment> enrollments = enrollmentRepository.findByGroupId(groupId);
+        for (Enrollment enrollment : enrollments) {
+            Student student = enrollment.getStudent();
 
-                int totalDays = presentDays + absentDays;
-                double attendancePercentage = totalDays > 0 ? (presentDays * 100.0) / totalDays : 0.0;
+            int presentDays = attendanceRepository.countByStudentAndGroupAndMonthAndStatus(
+                    student.getId(), groupId, year, month, AttendanceStatus.PRESENT);
 
-                StudentAttendanceSummaryDto summary = new StudentAttendanceSummaryDto(
-                        student.getId(),
-                        student.getFirstName() + " " + student.getLastName(),
-                        student.getPhoneNumber(),
-                        presentDays,
-                        absentDays,
-                        totalDays,
-                        Math.round(attendancePercentage * 100.0) / 100.0
-                );
+            int absentDays = attendanceRepository.countByStudentAndGroupAndMonthAndStatus(
+                    student.getId(), groupId, year, month, AttendanceStatus.ABSENT);
 
-                summaries.add(summary);
-            }
+            int totalDays = presentDays + absentDays;
+            double attendancePercentage = totalDays > 0 ? (presentDays * 100.0) / totalDays : 0.0;
+
+            StudentAttendanceSummaryDto summary = new StudentAttendanceSummaryDto(
+                    student.getId(),
+                    student.getFirstName() + " " + student.getLastName(),
+                    student.getPhoneNumber(),
+                    presentDays,
+                    absentDays,
+                    totalDays,
+                    Math.round(attendancePercentage * 100.0) / 100.0
+            );
+
+            summaries.add(summary);
         }
 
         return summaries;

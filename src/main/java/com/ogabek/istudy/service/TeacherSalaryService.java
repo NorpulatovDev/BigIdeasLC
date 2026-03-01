@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +25,7 @@ public class TeacherSalaryService {
     private final BranchRepository branchRepository;
     private final PaymentRepository paymentRepository;
     private final GroupRepository groupRepository;
+    private final EnrollmentRepository enrollmentRepository;
 
     @Transactional(readOnly = true)
     public SalaryCalculationDto calculateTeacherSalary(Long teacherId, int year, int month) {
@@ -39,30 +39,28 @@ public class TeacherSalaryService {
         int totalPaidStudents = 0;
 
         for (Group group : teacherGroups) {
-            int totalStudentsInGroup = group.getStudents() != null ? group.getStudents().size() : 0;
+            List<Enrollment> enrollments = enrollmentRepository.findByGroupId(group.getId());
+            int totalStudentsInGroup = enrollments.size();
             int paidStudentCount = 0;
             BigDecimal groupSalaryAmount = BigDecimal.ZERO;
-            BigDecimal teacherSalaryPerStudent = group.getTeacherSalaryPerStudent() != null ?
-                    group.getTeacherSalaryPerStudent() : BigDecimal.ZERO;
 
-            if (group.getStudents() != null) {
-                for (Student student : group.getStudents()) {
-                    BigDecimal studentGroupPayment = paymentRepository.getTotalPaidByStudentInGroupForMonth(
-                            student.getId(), group.getId(), year, month);
+            for (Enrollment enrollment : enrollments) {
+                Student student = enrollment.getStudent();
+                BigDecimal teacherSalaryPerStudent = enrollment.getTeacherSalaryAmount() != null
+                        ? enrollment.getTeacherSalaryAmount()
+                        : BigDecimal.ZERO;
 
-                    // Only count students who have paid
-                    if (studentGroupPayment != null && studentGroupPayment.compareTo(BigDecimal.ZERO) > 0) {
-                        paidStudentCount++;
-                        // Teacher gets fixed amount per paid student
-                        groupSalaryAmount = groupSalaryAmount.add(teacherSalaryPerStudent);
-                    }
+                BigDecimal studentGroupPayment = paymentRepository.getTotalPaidByStudentInGroupForMonth(
+                        student.getId(), group.getId(), year, month);
+
+                if (studentGroupPayment != null && studentGroupPayment.compareTo(BigDecimal.ZERO) > 0) {
+                    paidStudentCount++;
+                    groupSalaryAmount = groupSalaryAmount.add(teacherSalaryPerStudent);
                 }
             }
 
             totalPaidStudents += paidStudentCount;
             totalSalary = totalSalary.add(groupSalaryAmount);
-
-            BigDecimal groupPrice = group.getPrice() != null ? group.getPrice() : BigDecimal.ZERO;
 
             GroupSalaryInfo groupInfo = new GroupSalaryInfo(
                     group.getId(),
@@ -70,7 +68,7 @@ public class TeacherSalaryService {
                     paidStudentCount,
                     groupSalaryAmount,
                     totalStudentsInGroup,
-                    groupPrice
+                    BigDecimal.ZERO
             );
             groupInfos.add(groupInfo);
         }
@@ -86,10 +84,10 @@ public class TeacherSalaryService {
         dto.setTeacherName(teacher.getFirstName() + " " + teacher.getLastName());
         dto.setYear(year);
         dto.setMonth(month);
-        dto.setBaseSalary(BigDecimal.ZERO); // No longer used
+        dto.setBaseSalary(BigDecimal.ZERO);
         dto.setPaymentBasedSalary(totalSalary);
         dto.setTotalSalary(totalSalary);
-        dto.setTotalStudentPayments(BigDecimal.ZERO); // Not relevant in new system
+        dto.setTotalStudentPayments(BigDecimal.ZERO);
         dto.setTotalStudents(totalPaidStudents);
         dto.setAlreadyPaid(alreadyPaid);
         dto.setRemainingAmount(remainingAmount);
