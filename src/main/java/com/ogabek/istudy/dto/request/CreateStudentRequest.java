@@ -4,12 +4,12 @@ import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Getter
 @Setter
 public class CreateStudentRequest {
+    @Min(value = 1, message = "To'lov kuni 1 dan kichik bo'lmasligi kerak")
+    @Max(value = 31, message = "To'lov kuni 31 dan katta bo'lmasligi kerak")
+    private Integer paymentDayOfMonth;
     @NotBlank(message = "Ism kiritish majburiy")
     @Size(min = 2, max = 50, message = "Ism 2-50 harfdan iborat bo'lishi shart")
     private String firstName;
@@ -26,11 +26,4 @@ public class CreateStudentRequest {
 
     @NotNull(message = "Filial kiritish majburiy")
     private Long branchId;
-
-    private List<Long> groupIds = new ArrayList<>();
-
-    // NEW: When does this student pay each month? (1-31)
-    @Min(value = 1, message = "To'lov kuni 1 dan kichik bo'lmasligi kerak")
-    @Max(value = 31, message = "To'lov kuni 31 dan katta bo'lmasligi kerak")
-    private Integer paymentDayOfMonth;
 }

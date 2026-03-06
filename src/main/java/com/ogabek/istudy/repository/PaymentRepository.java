@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -143,6 +144,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                                                     @Param("groupId") Long groupId,
                                                     @Param("year") int year,
                                                     @Param("month") int month);
+
+    @Query("SELECT COUNT(p) > 0 FROM Payment p WHERE p.student.id = :studentId AND p.group.id = :groupId AND p.paymentDueDate >= :expectedDueDate")
+    Boolean hasCoveredPayment(@Param("studentId") Long studentId,
+                              @Param("groupId") Long groupId,
+                              @Param("expectedDueDate") LocalDate expectedDueDate);
 
     @Modifying
     @Query("DELETE FROM Payment p WHERE p.group.id = :groupId")

@@ -86,9 +86,7 @@ public class PaymentService {
         payment.setCategory(PaymentCategory.valueOf(request.getCategory().toUpperCase()));
         payment.setBranch(branch);
         payment.setPaymentDate(request.getPaymentDate());
-
-        LocalDate paymentDueDate = calculatePaymentDueDate(student, request.getPaymentDate());
-        payment.setPaymentDueDate(paymentDueDate);
+        payment.setPaymentDueDate(request.getPaymentDueDate());
 
         Payment savedPayment = paymentRepository.save(payment);
 
@@ -96,20 +94,6 @@ public class PaymentService {
                 .orElseThrow(() -> new RuntimeException("Failed to fetch created payment"));
 
         return convertToDto(paymentWithRelations);
-    }
-
-    private LocalDate calculatePaymentDueDate(Student student, LocalDate paymentDate) {
-        int year = paymentDate.getYear();
-        int month = paymentDate.getMonthValue();
-        int dayOfMonth = student.getPaymentDayOfMonth() != null
-                ? student.getPaymentDayOfMonth()
-                : 1;
-
-        try {
-            return LocalDate.of(year, month, dayOfMonth);
-        } catch (Exception e) {
-            return LocalDate.of(year, month, 1).plusMonths(1).minusDays(1);
-        }
     }
 
     @Transactional

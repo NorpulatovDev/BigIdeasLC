@@ -70,36 +70,34 @@ public class StudentService {
         int targetYear = year != null ? year : paymentPeriod.getYear();
         int targetMonth = month != null ? month : paymentPeriod.getMonthValue();
 
+        LocalDate today = LocalDate.now();
+
         for (Group group : branchGroups) {
             List<Enrollment> enrollments = enrollmentRepository.findByGroupId(group.getId());
             for (Enrollment enrollment : enrollments) {
                 Student student = enrollment.getStudent();
                 BigDecimal tuitionFee = enrollment.getTuitionFee() != null ? enrollment.getTuitionFee() : BigDecimal.ZERO;
 
-                BigDecimal totalPaid;
-                if (year == null || month == null) {
-                    totalPaid = paymentRepository.findByStudentIdWithRelations(student.getId())
-                            .stream()
-                            .filter(payment -> payment.getGroup().getId().equals(group.getId()))
-                            .map(Payment::getAmount)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-                } else {
-                    totalPaid = paymentRepository.getTotalPaidByStudentInGroupForMonth(
-                            student.getId(), group.getId(), targetYear, targetMonth);
-                    totalPaid = totalPaid != null ? totalPaid : BigDecimal.ZERO;
+                int dayOfMonth = student.getPaymentDayOfMonth() != null ? student.getPaymentDayOfMonth() : 1;
+                LocalDate expectedDueDate;
+                try {
+                    expectedDueDate = LocalDate.of(targetYear, targetMonth, dayOfMonth);
+                } catch (Exception e) {
+                    expectedDueDate = LocalDate.of(targetYear, targetMonth, 1)
+                            .withDayOfMonth(LocalDate.of(targetYear, targetMonth, 1).lengthOfMonth());
                 }
 
-                BigDecimal remainingAmount = tuitionFee.subtract(totalPaid);
-                boolean isOverdue = isPaymentOverdue(student, targetYear, targetMonth);
+                if (today.isBefore(expectedDueDate)) continue;
 
-                if (remainingAmount.compareTo(BigDecimal.ZERO) > 0 && isOverdue) {
+                Boolean covered = paymentRepository.hasCoveredPayment(student.getId(), group.getId(), expectedDueDate);
+                if (covered == null || !covered) {
                     result.add(new UnpaidStudentDto(
                             student.getId(),
                             student.getFirstName(),
                             student.getLastName(),
                             student.getPhoneNumber(),
                             student.getParentPhoneNumber(),
-                            remainingAmount,
+                            tuitionFee,
                             group.getId(),
                             group.getName()));
                 }
@@ -287,22 +285,6 @@ public class StudentService {
         }
     }
 
-    private boolean isPaymentOverdue(Student student, int year, int month) {
-        if (student.getPaymentDayOfMonth() == null) {
-            return false;
-        }
-
-        LocalDate today = LocalDate.now();
-        LocalDate dueDate;
-
-        try {
-            dueDate = LocalDate.of(year, month, student.getPaymentDayOfMonth());
-        } catch (Exception e) {
-            dueDate = LocalDate.of(year, month, 1).plusMonths(1).minusDays(1);
-        }
-
-        return today.isAfter(dueDate);
-    }
 
     private StudentDto convertToDto(Student student, int year, int month) {
         StudentDto dto = new StudentDto();

@@ -32,4 +32,7 @@ public class CreatePaymentRequest {
 
     @NotNull(message = "To'lov sanasi majburiy")
     private LocalDate paymentDate;
+
+    @NotNull(message = "To'lov muddati majburiy")
+    private LocalDate paymentDueDate;
 }
